@@ -1,0 +1,60 @@
+name: GNU Toolchain CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show tool versions
+        run: |
+          make --version
+
+      - name: Restore toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            $HOME/gnupru
+          key: toolchain-gnupru-2025.05
+
+      - name: Install GNU toolchain if missing
+        run: |
+          set -e
+          mkdir -p "$HOME/gnupru/downloads"
+          cd "$HOME/gnupru"
+
+          # Install gnupru-2025.05
+          if [ ! -d "$HOME/gnupru/pru-elf-2025.05" ]; then
+            cd "$HOME/gnupru/downloads"
+            wget -q --retry-connrefused --waitretry=1 --tries=5 --timeout=30 \
+              https://github.com/dinuxbg/gnupru/releases/download/2025.05/pru-elf-2025.05.amd64.tar.xz
+            cd "$HOME/gnupru"
+            tar xaf "$HOME/gnupru/downloads/pru-elf-2025.05.amd64.tar.xz"
+            mv pru-elf pru-elf-2025.05
+          fi
+
+          test -x "$HOME/gnupru/pru-elf-2025.05/bin/pru-gcc"
+          
+      - name: Export toolchain environment
+        run: |
+          {
+            echo "PATH=$PATH:$HOME/gnupru/pru-elf-2025.05/bin"
+          } >> $GITHUB_ENV
+          
+      - name: Build examples folder
+        run: |
+          make -C examples/gcc_rpmsg_echo_linux -j$(nproc) 
+          make -C examples/gcc_rpmsg_echo_linux -j$(nproc) MCU_DEVICE=am62x.pru1
